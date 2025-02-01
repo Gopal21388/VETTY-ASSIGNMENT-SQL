@@ -1,0 +1,173 @@
+SQL VETTY ASSIGNMENT
+
+1. Count of purchases per month (excluding refunded purchases)
+
+SELECT 
+    DATE_FORMAT(purchase_time, '%Y-%m') AS purchase_month,
+    COUNT(*) AS purchase_count
+FROM 
+    transactions
+WHERE 
+    status != 'refunded'
+GROUP BY 
+    purchase_month
+ORDER BY 
+    purchase_month;
+
+
+---
+
+2. Stores with at least 5 orders in October 2020
+
+SELECT 
+    store_id,
+    COUNT(*) AS order_count
+FROM 
+    transactions
+WHERE 
+    status = 'purchased' 
+    AND purchase_time BETWEEN '2020-10-01' AND '2020-10-31'
+GROUP BY 
+    store_id
+HAVING 
+    order_count >= 5;
+
+
+---
+
+3. Shortest interval (in minutes) from purchase to refund per store
+
+SELECT 
+    store_id,
+    MIN(TIMESTAMPDIFF(MINUTE, purchase_time, refund_time)) AS shortest_refund_interval
+FROM 
+    transactions
+WHERE 
+    refund_time IS NOT NULL
+GROUP BY 
+    store_id;
+
+
+---
+
+4. Gross transaction value of every store’s first order
+
+WITH FirstOrders AS (
+    SELECT 
+        store_id,
+        transaction_id,
+        purchase_time,
+        gross_transaction_value,
+        ROW_NUMBER() OVER (PARTITION BY store_id ORDER BY purchase_time ASC) AS rn
+    FROM 
+        transactions
+    WHERE 
+        status = 'purchased'
+)
+SELECT 
+    store_id,
+    transaction_id,
+    gross_transaction_value
+FROM 
+    FirstOrders
+WHERE 
+    rn = 1;
+
+
+---
+
+5. Most popular item name in buyers' first purchase
+
+WITH FirstPurchases AS (
+    SELECT 
+        buyer_id,
+        transaction_id,
+        ROW_NUMBER() OVER (PARTITION BY buyer_id ORDER BY purchase_time ASC) AS rn
+    FROM 
+        transactions
+    WHERE 
+        status = 'purchased'
+)
+SELECT 
+    i.item_name,
+    COUNT(*) AS order_count
+FROM 
+    items i
+JOIN 
+    FirstPurchases fp ON i.transaction_id = fp.transaction_id
+WHERE 
+    fp.rn = 1
+GROUP BY 
+    i.item_name
+ORDER BY 
+    order_count DESC
+LIMIT 1;
+
+
+---
+
+6. Flag for refund eligibility (within 72 hours of purchase)
+
+SELECT 
+    t.transaction_id,
+    t.purchase_time,
+    t.refund_time,
+    CASE 
+        WHEN TIMESTAMPDIFF(HOUR, t.purchase_time, t.refund_time) <= 72 THEN 'Eligible'
+        ELSE 'Not Eligible'
+    END AS refund_status
+FROM 
+    transactions t
+WHERE 
+    t.refund_time IS NOT NULL;
+
+
+---
+
+7. Rank by buyer_id and filter for the second purchase (ignoring refunds)
+
+WITH RankedPurchases AS (
+    SELECT 
+        buyer_id,
+        transaction_id,
+        purchase_time,
+        ROW_NUMBER() OVER (PARTITION BY buyer_id ORDER BY purchase_time ASC) AS purchase_rank
+    FROM 
+        transactions
+    WHERE 
+        status = 'purchased'
+)
+SELECT 
+    buyer_id,
+    transaction_id,
+    purchase_time
+FROM 
+    RankedPurchases
+WHERE 
+    purchase_rank = 2;
+
+
+---
+
+8. Find the second transaction time per buyer (without using MIN/MAX)
+
+WITH PurchaseOrder AS (
+    SELECT 
+        buyer_id,
+        transaction_id,
+        purchase_time,
+        ROW_NUMBER() OVER (PARTITION BY buyer_id ORDER BY purchase_time ASC) AS purchase_order
+    FROM 
+        transactions
+    WHERE 
+        status = 'purchased'
+)
+SELECT 
+    buyer_id,
+    transaction_id,
+    purchase_time
+FROM 
+    PurchaseOrder
+WHERE 
+    purchase_order = 2;
+
